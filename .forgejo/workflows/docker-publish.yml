@@ -30,7 +30,7 @@ jobs:
 
       - name: Start Docker daemon
         run: |
-          dockerd --host=unix:///var/run/docker.sock --iptables=false > /tmp/dockerd.log 2>&1 &
+          dockerd --host=unix:///var/run/docker.sock --iptables=false --dns=8.8.8.8 --dns=8.8.4.4 > /tmp/dockerd.log 2>&1 &
           for i in $(seq 1 30); do
             sleep 2
             docker info > /dev/null 2>&1 && echo "Docker daemon ready" && exit 0
