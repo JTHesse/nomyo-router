@@ -9,7 +9,7 @@ on:
   workflow_dispatch:
 
 env:
-  REGISTRY: bitfreedom.net
+  REGISTRY: bitfreedom.net/code
   IMAGE_NAME: ${{ github.repository }}
 
 jobs:
@@ -30,12 +30,15 @@ jobs:
 
       - name: Start Docker daemon
         run: |
-          dockerd &
+          dockerd --host=unix:///var/run/docker.sock --iptables=false > /tmp/dockerd.log 2>&1 &
           for i in $(seq 1 30); do
-            docker info && break
-            echo "Waiting for Docker daemon... ($i/30)"
             sleep 2
+            docker info > /dev/null 2>&1 && echo "Docker daemon ready" && exit 0
+            echo "Waiting for Docker daemon... ($i/30)"
           done
+          echo "=== dockerd failed to start, logs: ==="
+          cat /tmp/dockerd.log
+          exit 1
 
       - name: Checkout repository
         run: |
