@@ -65,3 +65,5 @@ config.yaml
 
 # SQLite
 *.db*
+
+*settings.json

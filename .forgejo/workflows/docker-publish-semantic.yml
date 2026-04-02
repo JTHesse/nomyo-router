@@ -1,0 +1,87 @@
+name: Build and Publish Docker Image (Semantic Cache)
+
+# Builds the :semantic variant that includes sentence-transformers + CPU torch
+# and the pre-baked all-MiniLM-L6-v2 embedding model (~500 MB larger than lean).
+# Tags mirror the lean workflow but carry a -semantic suffix, e.g.:
+#   bitfreedom.net/nomyo-ai/nomyo-router:latest-semantic
+#   bitfreedom.net/nomyo-ai/nomyo-router:0.7.0-semantic
+#   bitfreedom.net/nomyo-ai/nomyo-router:0.7-semantic
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+
+env:
+  REGISTRY: bitfreedom.net
+  IMAGE_NAME: ${{ github.repository }}
+
+jobs:
+  build-and-push-semantic:
+    runs-on: docker
+    container:
+      image: node:lts-bookworm
+      env:
+        DOCKER_HOST: tcp://dind:2375
+        DOCKER_TLS_CERTDIR: ""
+    services:
+      dind:
+        image: docker:dind
+        options: --privileged
+        env:
+          DOCKER_TLS_CERTDIR: ""
+    permissions:
+      contents: read
+      packages: write
+
+    steps:
+      - name: Install Docker CLI
+        run: |
+          apt-get update -qq
+          apt-get install -y -qq docker.io
+
+      - name: Checkout repository
+        uses: https://github.com/actions/checkout@v4
+
+      - name: Set up QEMU (for multi-arch builds)
+        uses: https://github.com/docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: https://github.com/docker/setup-buildx-action@v3
+
+      - name: Log in to Forgejo Container Registry
+        uses: https://github.com/docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.FORGEJO_TOKEN }}
+
+      - name: Extract Docker metadata
+        id: meta
+        uses: https://github.com/docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            # Versioned semantic tags on git tags (e.g. v0.7.0 → 0.7.0-semantic, 0.7-semantic)
+            type=semver,pattern={{version}}-semantic
+            type=semver,pattern={{major}}.{{minor}}-semantic
+            # latest-semantic only on main branch pushes
+            type=raw,value=latest-semantic,enable=${{ github.ref == 'refs/heads/main' }}
+            # SHA-tagged for traceability
+            type=sha,prefix=sha-,suffix=-semantic
+
+      - name: Build and push semantic Docker image
+        uses: https://github.com/docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          build-args: |
+            SEMANTIC_CACHE=true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:buildcache-semantic
+          cache-to: type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:buildcache-semantic,mode=max
