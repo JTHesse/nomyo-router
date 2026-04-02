@@ -17,27 +17,20 @@ jobs:
     runs-on: docker
     container:
       image: node:lts-bookworm
-      env:
-        DOCKER_HOST: tcp://dind:2375
-        DOCKER_TLS_CERTDIR: ""
-    services:
-      dind:
-        image: docker:dind
-        options: --privileged
-        env:
-          DOCKER_TLS_CERTDIR: ""
+      options: --privileged
     permissions:
       contents: read
       packages: write
 
     steps:
-      - name: Install Docker CLI
+      - name: Install Docker
         run: |
           apt-get update -qq
           apt-get install -y -qq docker.io
 
-      - name: Wait for Docker daemon
+      - name: Start Docker daemon
         run: |
+          dockerd &
           for i in $(seq 1 30); do
             docker info && break
             echo "Waiting for Docker daemon... ($i/30)"
