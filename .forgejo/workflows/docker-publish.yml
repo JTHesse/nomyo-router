@@ -38,6 +38,8 @@ jobs:
 
       - name: Checkout repository
         uses: https://github.com/actions/checkout@v4
+        with:
+          github-server-url: https://bitfreedom.net/code
 
       - name: Set up QEMU (for multi-arch builds)
         uses: https://github.com/docker/setup-qemu-action@v3
