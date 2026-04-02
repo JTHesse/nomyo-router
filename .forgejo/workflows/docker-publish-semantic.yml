@@ -16,7 +16,7 @@ on:
   workflow_dispatch:
 
 env:
-  REGISTRY: bitfreedom.net/code
+  REGISTRY: bitfreedom.net
   IMAGE_NAME: ${{ github.repository }}
 
 jobs:
