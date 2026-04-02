@@ -44,9 +44,10 @@ jobs:
           apt-get install -y -qq docker.io
 
       - name: Checkout repository
-        uses: https://github.com/actions/checkout@v4
-        with:
-          github-server-url: https://bitfreedom.net/code
+        run: |
+          git clone --depth=1 --branch "${{ github.ref_name }}" \
+            "https://oauth2:${{ github.token }}@bitfreedom.net/code/${{ github.repository }}.git" \
+            .
 
       - name: Set up QEMU (for multi-arch builds)
         uses: https://github.com/docker/setup-qemu-action@v3
