@@ -51,6 +51,8 @@ jobs:
 
       - name: Set up Docker Buildx
         uses: https://github.com/docker/setup-buildx-action@v3
+        with:
+          driver-opts: network=host
 
       - name: Log in to Forgejo Container Registry
         uses: https://github.com/docker/login-action@v3
