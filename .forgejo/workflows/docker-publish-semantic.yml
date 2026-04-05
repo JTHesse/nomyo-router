@@ -85,7 +85,7 @@ jobs:
             SEMANTIC_CACHE=true
           tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:buildcache-semantic-${{ matrix.platform == 'linux/amd64' && 'amd64' || 'arm64' }}
           cache-from: type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:buildcache-semantic-${{ matrix.platform == 'linux/amd64' && 'amd64' || 'arm64' }}
-          cache-to: type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:buildcache-semantic-${{ matrix.platform == 'linux/amd64' && 'amd64' || 'arm64' }},mode=max
+          cache-to: type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:buildcache-semantic-${{ matrix.platform == 'linux/amd64' && 'amd64' || 'arm64' }},mode=min
 
   merge:
     runs-on: docker-amd64
