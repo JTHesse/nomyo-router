@@ -77,11 +77,9 @@ jobs:
           platforms: ${{ matrix.platform }}
           push: true
           provenance: false
-          tags: |
-            ${{ env.REGISTRY }}/${{ env.CACHE_IMAGE }}:${{ matrix.arch }}
-            ${{ env.REGISTRY }}/${{ env.CACHE_IMAGE }}:run-${{ github.run_id }}-${{ matrix.arch }}
-          cache-from: type=registry,ref=${{ env.REGISTRY }}/${{ env.CACHE_IMAGE }}:${{ matrix.arch }}
-          cache-to: type=registry,ref=${{ env.REGISTRY }}/${{ env.CACHE_IMAGE }}:${{ matrix.arch }},mode=min,image-manifest=true,oci-mediatypes=true
+          tags: ${{ env.REGISTRY }}/${{ env.CACHE_IMAGE }}:platform-${{ matrix.arch }}
+          cache-from: type=registry,ref=${{ env.REGISTRY }}/${{ env.CACHE_IMAGE }}:buildcache-${{ matrix.arch }}
+          cache-to: type=registry,ref=${{ env.REGISTRY }}/${{ env.CACHE_IMAGE }}:buildcache-${{ matrix.arch }},mode=min,image-manifest=true,oci-mediatypes=true
 
   merge:
     runs-on: docker-amd64
