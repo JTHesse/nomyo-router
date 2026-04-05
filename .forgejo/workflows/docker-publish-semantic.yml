@@ -90,7 +90,7 @@ jobs:
             ${{ env.REGISTRY }}/${{ env.CACHE_IMAGE }}:semantic-${{ matrix.arch }}
             ${{ env.REGISTRY }}/${{ env.CACHE_IMAGE }}:run-${{ github.run_id }}-semantic-${{ matrix.arch }}
           cache-from: type=registry,ref=${{ env.REGISTRY }}/${{ env.CACHE_IMAGE }}:semantic-${{ matrix.arch }}
-          cache-to: type=registry,ref=${{ env.REGISTRY }}/${{ env.CACHE_IMAGE }}:semantic-${{ matrix.arch }},mode=min
+          cache-to: type=registry,ref=${{ env.REGISTRY }}/${{ env.CACHE_IMAGE }}:semantic-${{ matrix.arch }},mode=min,image-manifest=true,oci-mediatypes=true
 
   merge:
     runs-on: docker-amd64
