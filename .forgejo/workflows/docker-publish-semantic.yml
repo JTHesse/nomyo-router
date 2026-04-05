@@ -87,20 +87,6 @@ jobs:
           cache-from: type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:buildcache-semantic-${{ matrix.platform == 'linux/amd64' && 'amd64' || 'arm64' }}
           cache-to: type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:buildcache-semantic-${{ matrix.platform == 'linux/amd64' && 'amd64' || 'arm64' }},mode=max
 
-      - name: Export digest
-        run: |
-          mkdir -p /tmp/digests
-          digest="${{ steps.build.outputs.digest }}"
-          touch "/tmp/digests/${digest#sha256:}"
-
-      - name: Upload digest
-        uses: https://github.com/actions/upload-artifact@v4
-        with:
-          name: digest-semantic-${{ matrix.platform == 'linux/amd64' && 'amd64' || 'arm64' }}
-          path: /tmp/digests/*
-          if-no-files-found: error
-          retention-days: 1
-
   merge:
     runs-on: docker-amd64
     needs: build
@@ -108,13 +94,6 @@ jobs:
       contents: read
       packages: write
     steps:
-      - name: Download digests
-        uses: https://github.com/actions/download-artifact@v4
-        with:
-          path: /tmp/digests
-          pattern: digest-semantic-*
-          merge-multiple: true
-
       - name: Install Docker
         run: |
           apt-get update -qq
@@ -142,8 +121,8 @@ jobs:
             type=sha,prefix=sha-,suffix=-semantic
 
       - name: Create and push multi-arch manifest
-        working-directory: /tmp/digests
         run: |
           docker buildx imagetools create \
             $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
-            $(printf '${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}@sha256:%s ' *)
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:buildcache-semantic-amd64 \
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:buildcache-semantic-arm64
