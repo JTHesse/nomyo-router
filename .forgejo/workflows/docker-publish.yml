@@ -11,7 +11,7 @@ on:
 env:
   REGISTRY: bitfreedom.net
   IMAGE_NAME: ${{ github.repository }}
-  CACHE_IMAGE: ${{ github.repository }}-buildcache
+  CACHE_IMAGE: ${{ github.repository }}
 
 jobs:
   build:
@@ -133,5 +133,5 @@ jobs:
         run: |
           docker buildx imagetools create \
             $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
-            ${{ env.REGISTRY }}/${{ env.CACHE_IMAGE }}:run-${{ github.run_id }}-amd64 \
-            ${{ env.REGISTRY }}/${{ env.CACHE_IMAGE }}:run-${{ github.run_id }}-arm64
+            ${{ env.REGISTRY }}/${{ env.CACHE_IMAGE }}:platform-amd64 \
+            ${{ env.REGISTRY }}/${{ env.CACHE_IMAGE }}:platform-arm64
