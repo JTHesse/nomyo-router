@@ -11,7 +11,6 @@ on:
 env:
   REGISTRY: bitfreedom.net
   IMAGE_NAME: ${{ github.repository }}
-  CACHE_IMAGE: ${{ github.repository }}-buildcache
   DOCKER_BUILD_SUMMARY: "false"
 
 jobs:
@@ -78,9 +77,9 @@ jobs:
           platforms: ${{ matrix.platform }}
           push: true
           provenance: false
-          tags: ${{ env.REGISTRY }}/${{ env.CACHE_IMAGE }}:platform-${{ matrix.arch }}
-          cache-from: type=registry,ref=${{ env.REGISTRY }}/${{ env.CACHE_IMAGE }}:buildcache-${{ matrix.arch }}
-          cache-to: type=registry,ref=${{ env.REGISTRY }}/${{ env.CACHE_IMAGE }}:buildcache-${{ matrix.arch }},mode=min,image-manifest=true,oci-mediatypes=true
+          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:platform-${{ matrix.arch }}
+          cache-from: type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:buildcache-${{ matrix.arch }}
+          cache-to: type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:buildcache-${{ matrix.arch }},mode=min,image-manifest=true,oci-mediatypes=true
 
   merge:
     runs-on: docker-amd64
@@ -95,7 +94,7 @@ jobs:
       - name: Install Docker
         run: |
           apt-get update -qq
-          apt-get install -y -qq docker.io jq
+          apt-get install -y -qq docker.io jq curl
 
       - name: Start Docker daemon
         run: |
@@ -134,5 +133,15 @@ jobs:
         run: |
           docker buildx imagetools create \
             $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
-            ${{ env.REGISTRY }}/${{ env.CACHE_IMAGE }}:platform-amd64 \
-            ${{ env.REGISTRY }}/${{ env.CACHE_IMAGE }}:platform-arm64
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:platform-amd64 \
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:platform-arm64
+
+      - name: Delete intermediate platform tags
+        run: |
+          IMAGE_ENCODED=$(echo "${{ env.IMAGE_NAME }}" | sed 's|/|%2F|g')
+          for tag in platform-amd64 platform-arm64; do
+            curl -s -X DELETE \
+              -H "Authorization: token ${{ secrets.REGISTRY_TOKEN }}" \
+              "https://${{ env.REGISTRY }}/api/v1/packages/${{ github.repository_owner }}/container/${IMAGE_ENCODED}/${tag}" \
+              && echo "Deleted ${tag}" || echo "Failed to delete ${tag} (ignored)"
+          done
