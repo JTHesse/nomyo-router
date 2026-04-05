@@ -11,6 +11,7 @@ on:
 env:
   REGISTRY: bitfreedom.net
   IMAGE_NAME: ${{ github.repository }}
+  CACHE_IMAGE: ${{ github.repository }}-buildcache
 
 jobs:
   build:
@@ -27,8 +28,10 @@ jobs:
         include:
           - platform: linux/amd64
             runner: docker-amd64
+            arch: amd64
           - platform: linux/arm64
             runner: docker-arm64
+            arch: arm64
 
     steps:
       - name: Install Docker
@@ -74,9 +77,11 @@ jobs:
           platforms: ${{ matrix.platform }}
           push: true
           provenance: false
-          tags: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:buildcache-${{ matrix.platform == 'linux/amd64' && 'amd64' || 'arm64' }}
-          cache-from: type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:buildcache-${{ matrix.platform == 'linux/amd64' && 'amd64' || 'arm64' }}
-          cache-to: type=registry,ref=${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:buildcache-${{ matrix.platform == 'linux/amd64' && 'amd64' || 'arm64' }},mode=min
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.CACHE_IMAGE }}:${{ matrix.arch }}
+            ${{ env.REGISTRY }}/${{ env.CACHE_IMAGE }}:run-${{ github.run_id }}-${{ matrix.arch }}
+          cache-from: type=registry,ref=${{ env.REGISTRY }}/${{ env.CACHE_IMAGE }}:${{ matrix.arch }}
+          cache-to: type=registry,ref=${{ env.REGISTRY }}/${{ env.CACHE_IMAGE }}:${{ matrix.arch }},mode=min
 
   merge:
     runs-on: docker-amd64
@@ -130,5 +135,5 @@ jobs:
         run: |
           docker buildx imagetools create \
             $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:buildcache-amd64 \
-            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:buildcache-arm64
+            ${{ env.REGISTRY }}/${{ env.CACHE_IMAGE }}:run-${{ github.run_id }}-amd64 \
+            ${{ env.REGISTRY }}/${{ env.CACHE_IMAGE }}:run-${{ github.run_id }}-arm64
