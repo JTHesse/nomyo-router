@@ -11,7 +11,8 @@ on:
 env:
   REGISTRY: bitfreedom.net
   IMAGE_NAME: ${{ github.repository }}
-  CACHE_IMAGE: ${{ github.repository }}
+  CACHE_IMAGE: ${{ github.repository }}-buildcache
+  DOCKER_BUILD_SUMMARY: "false"
 
 jobs:
   build:
