@@ -90,6 +90,9 @@ jobs:
   merge:
     runs-on: docker-amd64
     needs: build
+    container:
+      image: node:lts-bookworm
+      options: --privileged
     permissions:
       contents: read
       packages: write
@@ -97,7 +100,19 @@ jobs:
       - name: Install Docker
         run: |
           apt-get update -qq
-          apt-get install -y -qq docker.io
+          apt-get install -y -qq docker.io jq
+
+      - name: Start Docker daemon
+        run: |
+          dockerd --host=unix:///var/run/docker.sock --iptables=false --dns=8.8.8.8 --dns=8.8.4.4 > /tmp/dockerd.log 2>&1 &
+          for i in $(seq 1 30); do
+            sleep 2
+            docker info > /dev/null 2>&1 && echo "Docker daemon ready" && exit 0
+            echo "Waiting for Docker daemon... ($i/30)"
+          done
+          echo "=== dockerd failed to start, logs: ==="
+          cat /tmp/dockerd.log
+          exit 1
 
       - name: Set up Docker Buildx
         uses: https://github.com/docker/setup-buildx-action@v3
