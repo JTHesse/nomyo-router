@@ -1064,6 +1064,7 @@ async def _make_chat_request(model: str, messages: list, tools=None, stream: boo
         if messages:
             messages = transform_images_to_data_urls(messages)
             messages = transform_tool_calls_to_openai(messages)
+            messages = _strip_assistant_prefill(messages)
         params = {
             "messages": messages,
             "model": model,
@@ -1294,6 +1295,14 @@ def resize_image_if_needed(image_data):
     except Exception as e:
         print(f"Error processing image: {e}")
         return None
+
+def _strip_assistant_prefill(messages: list) -> list:
+    """Remove a trailing assistant message used as prefill.
+    OpenAI-compatible endpoints (including Claude) do not support prefill and
+    will reject requests where the last message has role 'assistant'."""
+    if messages and messages[-1].get("role") == "assistant":
+        return messages[:-1]
+    return messages
 
 def transform_tool_calls_to_openai(message_list):
     """
@@ -1961,6 +1970,7 @@ async def chat_proxy(request: Request):
         if messages:
             messages = transform_images_to_data_urls(messages)
             messages = transform_tool_calls_to_openai(messages)
+            messages = _strip_assistant_prefill(messages)
         params = {
             "messages": messages,
             "model": model,
@@ -3027,6 +3037,7 @@ async def openai_chat_completions_proxy(request: Request):
             model = model.split(":latest")
             model = model[0]
 
+        messages = _strip_assistant_prefill(messages)
         params = {
             "messages": messages,
             "model": model,
