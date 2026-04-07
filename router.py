@@ -1007,9 +1007,6 @@ class fetch:
             # If anything goes wrong we cannot reply details
             message = _format_connection_issue(request_url, e)
             print(f"[fetch.endpoint_details] {message}")
-            # Record failure so subsequent calls skip this endpoint briefly
-            async with _available_error_cache_lock:
-                _available_error_cache[endpoint] = time.time()
             return []
 
 def ep2base(ep):
