@@ -590,7 +590,8 @@ async def token_worker() -> None:
             # Update in-memory counts for immediate reporting
             async with token_usage_lock:
                 token_usage_counts[endpoint][model] += (prompt + comp)
-                await publish_snapshot()
+                snapshot = _capture_snapshot()
+            await _distribute_snapshot(snapshot)
     except asyncio.CancelledError:
         # Gracefully handle task cancellation during shutdown
         print("[token_worker] Task cancelled, processing remaining queue items...")
@@ -617,7 +618,8 @@ async def token_worker() -> None:
                     })
                 async with token_usage_lock:
                     token_usage_counts[endpoint][model] += (prompt + comp)
-                    await publish_snapshot()
+                    snapshot = _capture_snapshot()
+                await _distribute_snapshot(snapshot)
             except asyncio.QueueEmpty:
                 break
         print("[token_worker] Task cancelled, remaining items processed.")
@@ -1007,9 +1009,6 @@ class fetch:
             # If anything goes wrong we cannot reply details
             message = _format_connection_issue(request_url, e)
             print(f"[fetch.endpoint_details] {message}")
-            # Record failure so subsequent calls skip this endpoint briefly
-            async with _available_error_cache_lock:
-                _available_error_cache[endpoint] = time.time()
             return []
 
 def ep2base(ep):
@@ -1036,7 +1035,8 @@ def dedupe_on_keys(dicts, key_fields):
 async def increment_usage(endpoint: str, model: str) -> None:
     async with usage_lock:
         usage_counts[endpoint][model] += 1
-        await publish_snapshot()
+        snapshot = _capture_snapshot()
+    await _distribute_snapshot(snapshot)
 
 async def decrement_usage(endpoint: str, model: str) -> None:
     async with usage_lock:
@@ -1049,7 +1049,8 @@ async def decrement_usage(endpoint: str, model: str) -> None:
             usage_counts[endpoint].pop(model, None)
         #if not usage_counts[endpoint]:
         #    usage_counts.pop(endpoint, None)
-        await publish_snapshot()
+        snapshot = _capture_snapshot()
+    await _distribute_snapshot(snapshot)
 
 async def _make_chat_request(model: str, messages: list, tools=None, stream: bool = False, think: bool = False, format=None, options=None, keep_alive: str = None) -> ollama.ChatResponse:
     """
@@ -1062,8 +1063,10 @@ async def _make_chat_request(model: str, messages: list, tools=None, stream: boo
         if ":latest" in model:
             model = model.split(":latest")[0]
         if messages:
-            messages = transform_images_to_data_urls(messages)
+            if any("images" in m for m in messages):
+                messages = await asyncio.to_thread(transform_images_to_data_urls, messages)
             messages = transform_tool_calls_to_openai(messages)
+            messages = _strip_assistant_prefill(messages)
         params = {
             "messages": messages,
             "model": model,
@@ -1294,6 +1297,14 @@ def resize_image_if_needed(image_data):
     except Exception as e:
         print(f"Error processing image: {e}")
         return None
+
+def _strip_assistant_prefill(messages: list) -> list:
+    """Remove a trailing assistant message used as prefill.
+    OpenAI-compatible endpoints (including Claude) do not support prefill and
+    will reject requests where the last message has role 'assistant'."""
+    if messages and messages[-1].get("role") == "assistant":
+        return messages[:-1]
+    return messages
 
 def transform_tool_calls_to_openai(message_list):
     """
@@ -1573,18 +1584,17 @@ class rechunk:
 # ------------------------------------------------------------------
 # SSE Helpser
 # ------------------------------------------------------------------
-async def publish_snapshot():
-    # NOTE: This function assumes usage_lock OR token_usage_lock is already held by the caller
-    # Create a snapshot without acquiring the lock (caller must hold it)
-    snapshot = orjson.dumps({
-        "usage_counts": dict(usage_counts),  # Create a copy
+def _capture_snapshot() -> str:
+    """Capture current usage counts as a JSON string. Caller must hold at least one of usage_lock/token_usage_lock."""
+    return orjson.dumps({
+        "usage_counts": dict(usage_counts),
         "token_usage_counts": dict(token_usage_counts)
     }, option=orjson.OPT_SORT_KEYS).decode("utf-8")
 
-    # Distribute the snapshot (no lock needed here since we have a copy)
+async def _distribute_snapshot(snapshot: str) -> None:
+    """Push a pre-captured snapshot to all SSE subscribers. Must be called outside any usage lock."""
     async with _subscribers_lock:
         for q in _subscribers:
-            # If the queue is full, drop the message to avoid back‑pressure.
             if q.full():
                 try:
                     await q.get()
@@ -1729,10 +1739,13 @@ async def choose_endpoint(model: str, reserve: bool = True) -> tuple[str, str]:
                 selected = min(candidate_endpoints, key=tracking_usage)
 
         tracking_model = get_tracking_model(selected, model)
+        snapshot = None
         if reserve:
             usage_counts[selected][tracking_model] += 1
-            await publish_snapshot()
-        return selected, tracking_model
+            snapshot = _capture_snapshot()
+    if snapshot is not None:
+        await _distribute_snapshot(snapshot)
+    return selected, tracking_model
 
 # -------------------------------------------------------------
 # 6. API route – Generate
@@ -1959,8 +1972,10 @@ async def chat_proxy(request: Request):
             model = model.split(":latest")
             model = model[0]
         if messages:
-            messages = transform_images_to_data_urls(messages)
+            if any("images" in m for m in messages):
+                messages = await asyncio.to_thread(transform_images_to_data_urls, messages)
             messages = transform_tool_calls_to_openai(messages)
+            messages = _strip_assistant_prefill(messages)
         params = {
             "messages": messages,
             "model": model,
@@ -3027,6 +3042,7 @@ async def openai_chat_completions_proxy(request: Request):
             model = model.split(":latest")
             model = model[0]
 
+        messages = _strip_assistant_prefill(messages)
         params = {
             "messages": messages,
             "model": model,

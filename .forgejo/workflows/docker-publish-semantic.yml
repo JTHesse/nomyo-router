@@ -1,0 +1,158 @@
+name: Build and Publish Docker Image (Semantic Cache)
+
+# Builds the :semantic variant that includes sentence-transformers + CPU torch
+# and the pre-baked all-MiniLM-L6-v2 embedding model (~500 MB larger than lean).
+# Tags mirror the lean workflow but carry a -semantic suffix, e.g.:
+#   bitfreedom.net/nomyo-ai/nomyo-router:latest-semantic
+#   bitfreedom.net/nomyo-ai/nomyo-router:0.7.0-semantic
+#   bitfreedom.net/nomyo-ai/nomyo-router:0.7-semantic
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+
+env:
+  REGISTRY: bitfreedom.net
+  IMAGE_NAME: ${{ github.repository }}
+  CACHE_IMAGE: ${{ github.repository }}-buildcache-semantic
+  DOCKER_BUILD_SUMMARY: "false"
+
+jobs:
+  build:
+    runs-on: ${{ matrix.runner }}
+    container:
+      image: node:lts-bookworm
+      options: --privileged
+    permissions:
+      contents: read
+      packages: write
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: linux/amd64
+            runner: docker-amd64
+            arch: amd64
+          - platform: linux/arm64
+            runner: docker-arm64
+            arch: arm64
+
+    steps:
+      - name: Install Docker
+        run: |
+          apt-get update -qq
+          apt-get install -y -qq docker.io
+
+      - name: Start Docker daemon
+        run: |
+          dockerd --host=unix:///var/run/docker.sock --iptables=false --dns=8.8.8.8 --dns=8.8.4.4 > /tmp/dockerd.log 2>&1 &
+          for i in $(seq 1 30); do
+            sleep 2
+            docker info > /dev/null 2>&1 && echo "Docker daemon ready" && exit 0
+            echo "Waiting for Docker daemon... ($i/30)"
+          done
+          echo "=== dockerd failed to start, logs: ==="
+          cat /tmp/dockerd.log
+          exit 1
+
+      - name: Checkout repository
+        run: |
+          git clone --depth=1 --branch "${{ github.ref_name }}" \
+            "https://oauth2:${{ github.token }}@bitfreedom.net/code/${{ github.repository }}.git" \
+            .
+
+      - name: Set up Docker Buildx
+        uses: https://github.com/docker/setup-buildx-action@v3
+        with:
+          driver-opts: network=host
+
+      - name: Log in to Forgejo Container Registry
+        uses: https://github.com/docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.REGISTRY_TOKEN }}
+
+      - name: Build and push platform image
+        id: build
+        uses: https://github.com/docker/build-push-action@v6
+        with:
+          context: .
+          platforms: ${{ matrix.platform }}
+          push: true
+          provenance: false
+          build-args: |
+            SEMANTIC_CACHE=true
+          tags: ${{ env.REGISTRY }}/${{ env.CACHE_IMAGE }}:platform-semantic-${{ matrix.arch }}
+          cache-from: type=registry,ref=${{ env.REGISTRY }}/${{ env.CACHE_IMAGE }}:buildcache-semantic-${{ matrix.arch }}
+          cache-to: type=registry,ref=${{ env.REGISTRY }}/${{ env.CACHE_IMAGE }}:buildcache-semantic-${{ matrix.arch }},mode=min
+
+  merge:
+    runs-on: docker-amd64
+    needs: build
+    container:
+      image: node:lts-bookworm
+      options: --privileged
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - name: Install Docker
+        run: |
+          apt-get update -qq
+          apt-get install -y -qq docker.io jq
+
+      - name: Start Docker daemon
+        run: |
+          dockerd --host=unix:///var/run/docker.sock --iptables=false --dns=8.8.8.8 --dns=8.8.4.4 > /tmp/dockerd.log 2>&1 &
+          for i in $(seq 1 30); do
+            sleep 2
+            docker info > /dev/null 2>&1 && echo "Docker daemon ready" && exit 0
+            echo "Waiting for Docker daemon... ($i/30)"
+          done
+          echo "=== dockerd failed to start, logs: ==="
+          cat /tmp/dockerd.log
+          exit 1
+
+      - name: Set up Docker Buildx
+        uses: https://github.com/docker/setup-buildx-action@v3
+
+      - name: Log in to Forgejo Container Registry
+        uses: https://github.com/docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.REGISTRY_TOKEN }}
+
+      - name: Extract Docker metadata
+        id: meta
+        uses: https://github.com/docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
+          tags: |
+            type=semver,pattern={{version}}-semantic
+            type=semver,pattern={{major}}.{{minor}}-semantic
+            type=raw,value=latest-semantic,enable=${{ github.ref == 'refs/heads/main' }}
+            type=sha,prefix=sha-,suffix=-semantic
+
+      - name: Create and push multi-arch manifest
+        run: |
+          docker buildx imagetools create \
+            $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
+            ${{ env.REGISTRY }}/${{ env.CACHE_IMAGE }}:platform-semantic-amd64 \
+            ${{ env.REGISTRY }}/${{ env.CACHE_IMAGE }}:platform-semantic-arm64
+
+      - name: Delete intermediate platform tags
+        run: |
+          CACHE_NAME="${{ env.CACHE_IMAGE }}"
+          CACHE_NAME="${CACHE_NAME##*/}"
+          for tag in platform-semantic-amd64 platform-semantic-arm64; do
+            STATUS=$(curl -s -o /dev/null -w "%{http_code}" -X DELETE \
+              -H "Authorization: token ${{ secrets.REGISTRY_TOKEN }}" \
+              "https://${{ env.REGISTRY }}/api/v1/packages/${{ github.repository_owner }}/container/${CACHE_NAME}/${tag}")
+            echo "DELETE ${tag}: HTTP ${STATUS}"
+          done
