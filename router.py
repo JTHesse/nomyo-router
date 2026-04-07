@@ -1059,7 +1059,8 @@ async def _make_chat_request(model: str, messages: list, tools=None, stream: boo
         if ":latest" in model:
             model = model.split(":latest")[0]
         if messages:
-            messages = await asyncio.to_thread(transform_images_to_data_urls, messages)
+            if any("images" in m for m in messages):
+                messages = await asyncio.to_thread(transform_images_to_data_urls, messages)
             messages = transform_tool_calls_to_openai(messages)
             messages = _strip_assistant_prefill(messages)
         params = {
@@ -1965,7 +1966,8 @@ async def chat_proxy(request: Request):
             model = model.split(":latest")
             model = model[0]
         if messages:
-            messages = await asyncio.to_thread(transform_images_to_data_urls, messages)
+            if any("images" in m for m in messages):
+                messages = await asyncio.to_thread(transform_images_to_data_urls, messages)
             messages = transform_tool_calls_to_openai(messages)
             messages = _strip_assistant_prefill(messages)
         params = {
