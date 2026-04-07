@@ -77,15 +77,17 @@ uvicorn router:app --host 127.0.0.1 --port 12434 --loop uvloop
 Pre-built multi-arch images (`linux/amd64`, `linux/arm64`) are published automatically on every release.
 
 **Lean image** (exact-match cache, ~300 MB):
+
 ```sh
-docker pull ghcr.io/nomyo-ai/nomyo-router:latest
-docker pull ghcr.io/nomyo-ai/nomyo-router:0.7.0
+docker pull bitfreedom.net/nomyo-ai/nomyo-router:latest
+docker pull bitfreedom.net/nomyo-ai/nomyo-router:v0.7.0
 ```
 
 **Semantic image** (semantic cache with `all-MiniLM-L6-v2` pre-baked, ~800 MB):
+
 ```sh
-docker pull ghcr.io/nomyo-ai/nomyo-router:latest-semantic
-docker pull ghcr.io/nomyo-ai/nomyo-router:0.7.0-semantic
+docker pull bitfreedom.net/nomyo-ai/nomyo-router:latest-semantic
+docker pull bitfreedom.net/nomyo-ai/nomyo-router:0.7.0-semantic
 ```
 
 ### Build the container image locally
@@ -155,6 +157,7 @@ cache_history_weight: 0.3
 ```
 
 Pull the semantic image:
+
 ```bash
 docker pull ghcr.io/nomyo-ai/nomyo-router:latest-semantic
 ```
@@ -162,6 +165,7 @@ docker pull ghcr.io/nomyo-ai/nomyo-router:latest-semantic
 ### Cache key strategy
 
 Each request is keyed on `model + system_prompt` (exact) combined with a weighted-mean embedding of BM25-weighted chat history (30%) and the last user message (70%). This means:
+
 - Different system prompts → always separate cache namespaces (no cross-tenant leakage)
 - Same question, different phrasing → cache hit (semantic mode)
 - MOE requests (`moe-*`) → always bypass the cache
